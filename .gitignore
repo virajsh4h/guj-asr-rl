@@ -3,3 +3,9 @@ tmp_audio/
 __pycache__/
 *.pyc
 .env
+venv/
+.env
+data_cache/
+model_cache/
+tmp_audio/
+__pycache__/
