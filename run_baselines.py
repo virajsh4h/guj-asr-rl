@@ -171,3 +171,69 @@ def build_adapter(key):
     if key == "sravaani": return SraVaaniAdapter()
     if key == "bodhan": return BodhanAdapter()
     raise ValueError(key)
+
+def print_leaderboard(conn):
+    df = pd.read_sql_query("""
+        SELECT dataset, split, model_name, COUNT(*) as n,
+               ROUND(AVG(wer),2) as mean_wer, ROUND(AVG(cer),2) as mean_cer,
+               ROUND(AVG(capped_cer),2) as mean_capped_cer,
+               ROUND(100.0*SUM(script_drift)/COUNT(*),2) as drift_pct,
+               ROUND(100.0*SUM(loop_flag)/COUNT(*),2) as loop_pct,
+               ROUND(AVG(rtf),4) as mean_rtf
+        FROM predictions GROUP BY 1,2,3 ORDER BY 1,3
+    """, conn)
+    if df.empty: print("No predictions logged yet."); return
+    print("\n" + "="*110)
+    print("GUJARATI ASR REPRODUCIBLE BASELINE LEADERBOARD")
+    print("="*110)
+    print(tabulate(df, headers="keys", tablefmt="github", showindex=False))
+    print("="*110 + "\n")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--datasets", nargs="+", default=["fleurs"], choices=["fleurs", "indicvoices", "kathbath"])
+    parser.add_argument("--models", nargs="+", default=["whisper", "indicconformer"], choices=["whisper", "indicconformer", "sravaani", "bodhan", "gemma4"])
+    parser.add_argument("--max-samples", type=int, default=0)
+    parser.add_argument("--summary-only", action="store_true")
+    args = parser.parse_args()
+
+    conn = init_db()
+    if args.summary_only: print_leaderboard(conn); return
+
+    for model_key in args.models:
+        try: adapter = build_adapter(model_key)
+        except Exception as e: print(f"[ERROR] Could not init {model_key}: {e}"); continue
+
+        for ds_key in args.datasets:
+            try: samples = list(load_gujarati_benchmark(ds_key, args.max_samples))
+            except Exception as e: print(f"[ERROR] Could not load {ds_key}: {e}"); continue
+
+            pbar = tqdm(samples, desc=f"{adapter.name} on {ds_key}")
+            for item in pbar:
+                if is_evaluated(conn, item["dataset"], item["split"], item["sample_id"], adapter.name): continue
+                
+                t0 = time.perf_counter()
+                try: hyp_raw = adapter.transcribe(item["audio_array"], item["row_index"])
+                except Exception as inf_err:
+                    print(f"\n[WARN] Inference failed on {item['sample_id']}: {inf_err}")
+                    hyp_raw = ""
+                
+                latency_s = round(time.perf_counter() - t0, 4)
+                rtf = round(latency_s / max(item["duration_s"], 0.1), 4)
+                m = compute_utterance_metrics(item["reference"], hyp_raw)
+
+                conn.execute("""
+                    INSERT OR REPLACE INTO predictions 
+                    (dataset, split, row_index, sample_id, model_name, audio_duration_s, reference_raw, hypothesis_raw, reference_norm, hypothesis_norm, wer, cer, capped_cer, latency_s, rtf, script_drift, drift_ratio, loop_flag, failure_tag)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (item["dataset"], item["split"], item["row_index"], item["sample_id"], adapter.name, item["duration_s"], item["reference"], hyp_raw, m["ref_norm"], m["hyp_norm"], m["wer"], m["cer"], m["capped_cer"], latency_s, rtf, m["script_drift"], m["drift_ratio"], m["loop_flag"], ""))
+                conn.commit()
+                pbar.set_postfix(cer=f"{m['cer']:.1f}%", drift=m["script_drift"], loop=m["loop_flag"])
+
+        del adapter
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
+    
+    print_leaderboard(conn)
+
+if __name__ == "__main__":
+    main()
