@@ -4,8 +4,10 @@ __pycache__/
 *.pyc
 .env
 venv/
-.env
-data_cache/
 model_cache/
-tmp_audio/
-__pycache__/
+
+# Caches and binary databases
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
