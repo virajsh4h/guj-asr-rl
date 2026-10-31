@@ -5,6 +5,7 @@ __pycache__/
 .env
 venv/
 model_cache/
+results/
 
 # Caches and binary databases
 *.sqlite
