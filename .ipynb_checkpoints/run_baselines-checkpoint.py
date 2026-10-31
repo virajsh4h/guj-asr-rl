@@ -21,7 +21,7 @@ from gu_normalizer import compute_utterance_metrics
 
 WORKSPACE = os.path.expanduser("~/gujarati-asr-sota")
 DATA_CACHE = os.path.join(WORKSPACE, "data_cache")
-DB_PATH = os.path.join(WORKSPACE, "results", "predictions.sqlite")
+DB_PATH = os.path.join(WORKSPACE, "results", "predictions_v2.sqlite")
 
 # ── 1. SQLite Schema & Resumability ────────────────────────────────────────
 def init_db():
@@ -202,28 +202,64 @@ class IndicConformerAdapter(BaseASRAdapter):
             res = hyps[0][0] if isinstance(hyps[0], list) else hyps[0]
             return res.text if hasattr(res, "text") else str(res)
 
+
 class SraVaaniAdapter(BaseASRAdapter):
+
     def __init__(self):
-        import nemo.collections.asr as nemo_asr
+        from transformers import AutoModel
+
         self.name = "sravaani-1.0"
-        print(f"[Model] Loading {self.name}...")
-        self.model = nemo_asr.models.ASRModel.from_pretrained("ARTPARK-IISc/SraVaani-1.0")
-        if torch.cuda.is_available(): 
-            self.model = self.model.cuda().to(torch.bfloat16)
-        self.model.eval()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        hf_token = os.environ.get("HF_TOKEN")
+        if not hf_token:
+            raise RuntimeError("HF_TOKEN is not configured")
+
+        print("[Model] Loading SraVaani through official Transformers adapter...")
+
+        self.model = AutoModel.from_pretrained(
+            "ARTPARK-IISc/SraVaani-1.0",
+            trust_remote_code=True,
+            token=hf_token,
+        ).to(self.device).eval()
+
+        print("[Model] SraVaani loaded successfully.")
 
     def transcribe(self, audio_array, row_index):
-        import soundfile as sf
-        tmp = f"/tmp/{row_index}.wav"
-        sf.write(tmp, audio_array, 16000)
-        with torch.inference_mode():
-            try: 
-                hyps = self.model.transcribe([tmp], batch_size=1, source_lang="gu", target_lang="gu")
-            except TypeError: 
-                hyps = self.model.transcribe([tmp], batch_size=1)
-        os.remove(tmp)
-        res = hyps[0][0] if isinstance(hyps[0], list) else hyps[0]
-        return res.text.strip() if hasattr(res, "text") else str(res).strip()
+
+        fd, tmp = tempfile.mkstemp(
+            prefix=f"sravaani_{row_index}_",
+            suffix=".wav"
+        )
+        os.close(fd)
+
+        try:
+            sf.write(
+                tmp,
+                np.asarray(audio_array, dtype=np.float32),
+                16000,
+                subtype="PCM_16"
+            )
+
+            with torch.inference_mode():
+                hyps = self.model.transcribe(
+                    tmp,
+                    return_hypotheses=True
+                )
+
+            if not hyps:
+                return ""
+
+            hyp = hyps[0] if isinstance(hyps, (list, tuple)) else hyps
+
+            return str(
+                getattr(hyp, "text", hyp)
+            ).strip()
+
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
 
 class BodhanAdapter(BaseASRAdapter):
     def __init__(self):
