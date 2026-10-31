@@ -52,16 +52,28 @@ def load_gujarati_benchmark(dataset_key, max_samples=0):
     hf_token = os.environ.get("HF_TOKEN", None)
     
     if dataset_key == "fleurs":
-        print("[Dataset] Loading google/fleurs (gu_in, test) via Parquet...")
-        # Fix: Load via data_files glob to bypass the missing BuilderConfig error
+        from huggingface_hub import hf_hub_download
+
+        print("[Dataset] Loading pinned FLEURS Gujarati test Parquet...")
+        
+        fleurs_path = hf_hub_download(
+            repo_id="google/fleurs",
+            repo_type="dataset",
+            filename="gu_in/test-00000-of-00001.parquet",
+            revision="fdd74f7cdf01fc7641ab3072b6a38d364b3667f6",
+            cache_dir=DATA_CACHE,
+            token=hf_token or False,
+        )
+        
         ds = load_dataset(
-            "google/fleurs",
-            data_files={"test": "gu_in/test-*.parquet"},
+            "parquet",
+            data_files={"test": fleurs_path},
             split="test",
             cache_dir=DATA_CACHE,
-            revision="refs/convert/parquet",
         )
-        split_name, text_col, id_col = "test", "transcription", "id"
+        
+        split_name = "test"
+        text_candidates = ["transcription", "raw_transcription", "text"]
         
     elif dataset_key == "indicvoices":
         print("[Dataset] Loading ai4bharat/IndicVoices (gujarati, valid)...")
@@ -111,6 +123,17 @@ def load_gujarati_benchmark(dataset_key, max_samples=0):
             "duration_s": duration_s, 
             "reference": ref_text
         }
+
+def safe_iter_benchmark(dataset_key, max_samples):
+    try:
+        yield from load_gujarati_benchmark(
+            dataset_key,
+            max_samples
+        )
+    except Exception as e:
+        print(
+            f"[ERROR] Dataset {dataset_key} failed: {e}"
+        )
 
 # ── 3. Modular Model Adapters ──────────────────────────────────────────────
 class BaseASRAdapter:
@@ -331,11 +354,15 @@ def main():
             continue
 
         for ds_key in args.datasets:
-            try: 
-                samples = list(load_gujarati_benchmark(ds_key, args.max_samples))
-            except Exception as e: 
-                print(f"[ERROR] Could not load {ds_key}: {e}")
-                continue
+            samples = safe_iter_benchmark(
+                ds_key,
+                args.max_samples
+            )
+            
+            pbar = tqdm(
+                samples,
+                desc=f"{adapter.name} on {ds_key}"
+            )
 
             pbar = tqdm(samples, desc=f"{adapter.name} on {ds_key}")
             for item in pbar:
@@ -346,8 +373,35 @@ def main():
                 try: 
                     hyp_raw = adapter.transcribe(item["audio_array"], item["row_index"])
                 except Exception as inf_err:
-                    print(f"\n[WARN] Inference failed on {item['sample_id']}: {inf_err}")
-                    hyp_raw = ""
+                    print(
+                        f"\n[WARN] Inference failed on "
+                        f"{item['sample_id']}: {inf_err}"
+                    )
+                
+                    failure = {
+                        "dataset": item["dataset"],
+                        "split": item["split"],
+                        "sample_id": item["sample_id"],
+                        "model": adapter.name,
+                        "error": str(inf_err),
+                    }
+                
+                    failure_path = os.path.join(
+                        RESULTS_DIR,
+                        "inference_failures.jsonl"
+                    )
+                
+                    with open(
+                        failure_path,
+                        "a",
+                        encoding="utf-8"
+                    ) as f:
+                        f.write(
+                            json.dumps(failure, ensure_ascii=False)
+                            + "\n"
+                        )
+                
+                    continue
                 
                 latency_s = round(time.perf_counter() - t0, 4)
                 rtf = round(latency_s / max(item["duration_s"], 0.1), 4)
@@ -373,4 +427,5 @@ def main():
     print_leaderboard(conn)
 
 if __name__ == "__main__":
+    print("New version - FLEURS fixed and SraVaani loaded!!!!!!!!")
     main()
