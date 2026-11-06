@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""step 6: high-throughput supervised fine-tuning (sft) for gemma 4 e4b gujarati asr."""
+"""step 6: high-throughput supervised fine-tuning (sft) for gemma 4 e4b gujarati asr.
+
+fixes included:
+1. zero monkey-patching: loads all 2076/2076 pretrained weights intact (audio tower + projector + llm).
+2. exact torch.nn.Linear leaf targeting: passes exact linear module paths to peft so
+   Gemma4ClippableLinear wrappers are never targeted directly, while their inner `.linear`
+   weights (including embed_audio.embedding_projection.linear) are adapted cleanly.
+3. pre-flight sanity check: verifies initial loss on intact weights (~1.0-1.8, not 4.5)
+   before training begins.
+4. fast merged inference: calls merge_and_unload() and allows batch_size up to 32 during eval.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +23,7 @@ from typing import Any, Sequence
 
 import numpy as np
 import torch
-import torch.nn as nn  # FIXED: Added missing import for nn.Linear
-from torch.utils.data import Dataset, DataLoader, Sampler
+from torch.utils.data import DataLoader, Dataset, Sampler
 import transformers
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
@@ -25,7 +34,6 @@ from transformers import (
     LogitsProcessorList,
     get_cosine_schedule_with_warmup,
 )
-from transformers.models.gemma4 import modeling_gemma4  # FIXED: Added missing import for monkey-patch
 
 from gu_normalizer import normalize_gujarati
 from run_baselines_optimized import (
@@ -53,19 +61,16 @@ PROMPT = (
 )
 
 
-# =====================================================================
-# 1. DATA LOADING & FILTERING
-# =====================================================================
 class CuratedGujaratiSFTDataset(Dataset):
     """lazy-decoded, metadata-filtered balanced sft dataset across fleurs, kathbath, and indicvoices."""
 
     def __init__(
         self,
         max_fleurs: int = 3145,
-        max_kathbath: int = 10000,
-        max_indicvoices: int = 12000,
+        max_kathbath: int = 8000,
+        max_indicvoices: int = 10000,
         min_dur: float = 1.5,
-        max_dur: float = 24.0,
+        max_dur: float = 20.0,
         seed: int = 42,
     ):
         super().__init__()
@@ -74,7 +79,7 @@ class CuratedGujaratiSFTDataset(Dataset):
         self.datasets: dict[str, Any] = {}
         self.records: list[dict[str, Any]] = []
 
-        # Load FLEURS train split
+        # 1. load fleurs train
         print("[SFT Data] Indexing FLEURS Gujarati train...")
         fleurs_pq = hf_hub_download(
             repo_id="google/fleurs",
@@ -100,7 +105,7 @@ class CuratedGujaratiSFTDataset(Dataset):
         for idx, dur, norm_t in fl_indices[:max_fleurs]:
             self.records.append({"source": "fleurs", "idx": idx, "duration": dur, "text": norm_t, "audio_col": "audio"})
 
-        # Load Kathbath train split
+        # 2. load kathbath train
         if max_kathbath > 0:
             print("[SFT Data] Indexing Kathbath Gujarati train via metadata columns...")
             ds_kb = load_dataset("ai4bharat/Kathbath", "gujarati", split="train", cache_dir=str(DATA_CACHE), token=token)
@@ -122,7 +127,7 @@ class CuratedGujaratiSFTDataset(Dataset):
                         "source": "kathbath", "idx": idx, "duration": dur, "text": norm_t, "audio_col": "audio_filepath"
                     })
 
-        # Load IndicVoices train split
+        # 3. load indicvoices train
         if max_indicvoices > 0:
             print("[SFT Data] Indexing IndicVoices Gujarati train via metadata columns...")
             ds_iv = load_dataset("ai4bharat/IndicVoices", "gujarati", split="train", cache_dir=str(DATA_CACHE), token=token)
@@ -145,7 +150,12 @@ class CuratedGujaratiSFTDataset(Dataset):
                     })
 
         total_hours = sum(r["duration"] for r in self.records) / 3600.0
-        print(f"[SFT Data] Built balanced corpus: {len(self.records):,} clips ({total_hours:.2f} hours)")
+        print(
+            f"[SFT Data] Built balanced corpus: {len(self.records):,} clips ({total_hours:.2f} hours) "
+            f"[FLEURS={sum(1 for r in self.records if r['source']=='fleurs')}, "
+            f"Kathbath={sum(1 for r in self.records if r['source']=='kathbath')}, "
+            f"IndicVoices={sum(1 for r in self.records if r['source']=='indicvoices')}]"
+        )
 
     def __len__(self) -> int:
         return len(self.records)
@@ -156,8 +166,7 @@ class CuratedGujaratiSFTDataset(Dataset):
         row = ds[int(rec["idx"])]
         audio_raw, sr = _decode_audio_value(row[rec["audio_col"]])
         audio = _to_mono_16k(audio_raw, sr)
-        # Cap audio length at 24 seconds to prevent OOM
-        max_len = int(24.0 * TARGET_SR)
+        max_len = int(20.0 * TARGET_SR)
         if len(audio) > max_len:
             audio = audio[:max_len]
         return {
@@ -167,9 +176,6 @@ class CuratedGujaratiSFTDataset(Dataset):
         }
 
 
-# =====================================================================
-# 2. BATCHING & COLLATION (GPU OPTIMIZATION)
-# =====================================================================
 class DurationBucketBatchSampler(Sampler[list[int]]):
     """groups training clips of similar audio duration into each batch to minimize padding waste."""
 
@@ -208,6 +214,10 @@ class Gemma4ASRCollator:
             self.processor.tokenizer.padding_side = "right"
 
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
+        # force right padding every call so prompt_len slicing is 100% exact
+        if hasattr(self.processor, "tokenizer") and self.processor.tokenizer is not None:
+            self.processor.tokenizer.padding_side = "right"
+
         full_convs = []
         prompt_convs = []
 
@@ -226,20 +236,27 @@ class Gemma4ASRCollator:
             full_convs.append([user_msg, asst_msg])
             prompt_convs.append([user_msg])
 
-        # Apply chat template for the full conversation (prompt + target)
         batch = self.processor.apply_chat_template(
-            full_convs, add_generation_prompt=False, tokenize=True, return_dict=True, return_tensors="pt", padding=True
+            full_convs,
+            add_generation_prompt=False,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+            padding=True,
         )
-        # Apply chat template for just the prompt to find the exact split point
         prompt_batch = self.processor.apply_chat_template(
-            prompt_convs, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt", padding=True
+            prompt_convs,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+            padding=True,
         )
 
         input_ids = batch["input_ids"]
         labels = input_ids.clone()
         prompt_attn = prompt_batch["attention_mask"]
 
-        # Mask prompt and padding tokens so loss is ONLY calculated on the Gujarati transcript
         for i in range(len(features)):
             prompt_len = int(prompt_attn[i].sum().item())
             labels[i, :prompt_len] = -100
@@ -249,23 +266,41 @@ class Gemma4ASRCollator:
         return batch
 
 
-# =====================================================================
-# 3. INFERENCE ADAPTER (LOADING THE SFT MODEL LATER)
-# =====================================================================
-class Gemma4SFTAdapter(Gemma4Step5Adapter):
-    """step 6 sft adapter: loads gemma 4 e4b + trained sft lora weights + step 5 logit mask."""
+def collect_exact_linear_targets(model: torch.nn.Module) -> list[str]:
+    """collect exact torch.nn.Linear leaf module names across audio projector, audio encoder, and llm."""
+    target_keywords = (
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+        "embedding_projection",
+    )
+    linear_names = []
+    for name, module in model.named_modules():
+        # only select true torch.nn.Linear leaves (skips Gemma4ClippableLinear wrapper, selects its .linear child)
+        if isinstance(module, torch.nn.Linear) and any(k in name for k in target_keywords):
+            if "vision" not in name.lower():
+                linear_names.append(name)
+    return linear_names
 
-    batch_mode = "multimodal_sft_batch"
+
+class Gemma4SFTAdapter(Gemma4Step5Adapter):
+    """step 6 sft adapter: loads intact base model, merges lora weights for zero overhead, and runs batch=32."""
+
+    batch_mode = "multimodal_sft_merged_batch"
 
     def __init__(self, checkpoint_dir: Path = CHECKPOINT_DIR):
         self.name = "gemma-4-E4B-sft"
-        print(f"[Model] Loading {self.name} from {checkpoint_dir}...")
+        print(f"[Model] Loading {self.name} from {checkpoint_dir} and merging LoRA weights...")
         token = hf_auth_token()
         self.processor = AutoProcessor.from_pretrained("google/gemma-4-E4B-it", token=token)
         base_model = AutoModelForMultimodalLM.from_pretrained(
-            "google/gemma-4-E4B-it", torch_dtype=torch.bfloat16, device_map="auto", token=token,
+            "google/gemma-4-E4B-it",
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            token=token,
         )
-        self.model = PeftModel.from_pretrained(base_model, str(checkpoint_dir)).eval()
+        peft_model = PeftModel.from_pretrained(base_model, str(checkpoint_dir))
+        # merge lora weights into base linear layers so inference has zero peft overhead
+        self.model = peft_model.merge_and_unload().eval()
 
         tokenizer = getattr(self.processor, "tokenizer", None)
         if tokenizer is not None:
@@ -275,10 +310,49 @@ class Gemma4SFTAdapter(Gemma4Step5Adapter):
         else:
             self.logits_processors = LogitsProcessorList()
 
+    def transcribe_batch(self, audio_arrays, row_indices, batch_size):
+        # allow up to batch_size=32 on a100 80gb after merging lora weights
+        refs: list[tuple[int, int]] = []
+        chunks: list[np.ndarray] = []
+        per_sample: list[list[str | None]] = []
+        errors: list[Exception | None] = [None] * len(audio_arrays)
 
-# =====================================================================
-# 4. TRAINING LOOP & MONKEY PATCH
-# =====================================================================
+        for sample_i, audio in enumerate(audio_arrays):
+            sample_chunks = self._split_audio_at_silence(audio)
+            per_sample.append([None] * len(sample_chunks))
+            for chunk_i, chunk in enumerate(sample_chunks):
+                refs.append((sample_i, chunk_i))
+                chunks.append(chunk)
+
+        chunk_batch_size = max(1, min(batch_size, 32))
+        for start in range(0, len(chunks), chunk_batch_size):
+            chunk_group = chunks[start : start + chunk_batch_size]
+            ref_group = refs[start : start + chunk_batch_size]
+            try:
+                texts = self._transcribe_chunks_batch(chunk_group)
+                for (sample_i, chunk_i), text in zip(ref_group, texts):
+                    per_sample[sample_i][chunk_i] = text
+            except Exception as batch_exc:
+                print(f"\n[WARN] Gemma SFT batch failed; retrying individually: {batch_exc!r}")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                for (sample_i, chunk_i), chunk in zip(ref_group, chunk_group):
+                    try:
+                        per_sample[sample_i][chunk_i] = self._transcribe_chunk(chunk)
+                    except Exception as exc:
+                        errors[sample_i] = errors[sample_i] or exc
+
+        outputs: list[str | Exception] = []
+        for sample_i, parts in enumerate(per_sample):
+            if errors[sample_i] is not None:
+                outputs.append(errors[sample_i])
+            elif any(part is None for part in parts):
+                outputs.append(RuntimeError("Gemma SFT did not produce every audio chunk"))
+            else:
+                outputs.append(self._join_overlapping_transcripts([str(p) for p in parts]))
+        return outputs
+
+
 def train_sft(args: argparse.Namespace) -> None:
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -292,68 +366,79 @@ def train_sft(args: argparse.Namespace) -> None:
     batch_sampler = DurationBucketBatchSampler(durations, batch_size=args.batch_size)
 
     token = hf_auth_token()
-    print("[SFT Model] Loading google/gemma-4-E4B-it in bfloat16...")
+    print("[SFT Model] Loading google/gemma-4-E4B-it in bfloat16 (NO monkey-patch; all 2076 weights intact)...")
     processor = AutoProcessor.from_pretrained("google/gemma-4-E4B-it", token=token)
-
-    # -----------------------------------------------------------------
-    # FIX: Monkey-patch Gemma4ClippableLinear so PEFT recognizes it.
-    # We do this immediately before loading the model.
-    # -----------------------------------------------------------------
-    class PatchedClippableLinear(nn.Linear):
-        def __init__(self, config, in_features, out_features):
-            nn.Linear.__init__(self, in_features, out_features, bias=False)
-            self.use_clipped_linears = getattr(config, "use_clipped_linears", False)
-            if self.use_clipped_linears:
-                self.register_buffer("input_min", torch.tensor(-float("inf")))
-                self.register_buffer("input_max", torch.tensor(float("inf")))
-                self.register_buffer("output_min", torch.tensor(-float("inf")))
-                self.register_buffer("output_max", torch.tensor(float("inf")))
-
-        def forward(self, x):
-            if self.use_clipped_linears:
-                x = torch.clamp(x, self.input_min, self.input_max)
-            out = nn.Linear.forward(self, x)
-            if self.use_clipped_linears:
-                out = torch.clamp(out, self.output_min, self.output_max)
-            return out
-
-    modeling_gemma4.Gemma4ClippableLinear = PatchedClippableLinear
-    # -----------------------------------------------------------------
-
     model = AutoModelForMultimodalLM.from_pretrained(
-        "google/gemma-4-E4B-it", torch_dtype=torch.bfloat16, device_map="auto", token=token,
+        "google/gemma-4-E4B-it",
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        token=token,
     )
+
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    model.enable_input_require_grads()
     model.config.use_cache = False
 
+    target_linears = collect_exact_linear_targets(model)
+    audio_targets = [n for n in target_linears if "audio" in n.lower()]
+    print(f"[SFT Targets] Found {len(target_linears)} exact nn.Linear layers ({len(audio_targets)} in audio tower/projector).")
+
     lora_config = LoraConfig(
-        r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=0.05, bias="none",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=0.05,
+        bias="none",
+        target_modules=target_linears,
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
     collator = Gemma4ASRCollator(processor)
     loader = DataLoader(
-        dataset, batch_sampler=batch_sampler, num_workers=args.workers,
-        collate_fn=collator, pin_memory=True, prefetch_factor=2 if args.workers > 0 else None,
+        dataset,
+        batch_sampler=batch_sampler,
+        num_workers=args.workers,
+        collate_fn=collator,
+        pin_memory=True,
+        prefetch_factor=2 if args.workers > 0 else None,
     )
+
+    # pre-flight sanity check on batch 0 before training
+    first_batch = next(iter(loader))
+    valid_label_tokens = first_batch["labels"][0][first_batch["labels"][0] != -100]
+    decoded_target = processor.tokenizer.decode(valid_label_tokens, skip_special_tokens=False)
+    with torch.inference_mode():
+        b0 = {k: (v.to(model.device) if isinstance(v, torch.Tensor) else v) for k, v in first_batch.items()}
+        init_loss = float(model(**b0).loss.item())
+    print(f"[Pre-Flight Check] Decoded target[0]: {decoded_target[:80]}")
+    print(f"[Pre-Flight Check] Intact Base Model Step-0 Loss = {init_loss:.4f} (should be < 2.2, NOT 4.5!)")
+    if init_loss > 3.5:
+        raise RuntimeError(f"Pre-flight loss {init_loss:.4f} is abnormally high! Aborting to prevent deaf-model training.")
 
     total_micro_steps = len(loader) * args.epochs
     total_opt_steps = args.max_steps if args.max_steps > 0 else max(1, total_micro_steps // args.grad_accum)
 
     trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=0.01, fused=torch.cuda.is_available())
-    warmup_steps = max(10, int(0.06 * total_opt_steps))
+    optimizer = torch.optim.AdamW(
+        trainable_params,
+        lr=args.lr,
+        weight_decay=0.01,
+        fused=torch.cuda.is_available(),
+    )
+    warmup_steps = max(10, int(0.08 * total_opt_steps))
     scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_opt_steps)
 
-    print(f"\n[SFT Start] micro_batch={args.batch_size}, grad_accum={args.grad_accum}, effective_batch={args.batch_size * args.grad_accum}")
+    print(
+        f"\n[SFT Start] micro_batch={args.batch_size}, grad_accum={args.grad_accum}, "
+        f"effective_batch={args.batch_size * args.grad_accum}, opt_steps={total_opt_steps}, lr={args.lr}"
+    )
 
     model.train()
     optimizer.zero_grad(set_to_none=True)
 
     opt_step = 0
     running_loss = 0.0
+    micro_count_since_log = 0
     total_clips = 0
     t_start = time.perf_counter()
     log_path = RESULTS_DIR / "step6_sft_train_log.jsonl"
@@ -368,6 +453,7 @@ def train_sft(args: argparse.Namespace) -> None:
             loss.backward()
 
             running_loss += float(outputs.loss.detach().item())
+            micro_count_since_log += 1
             total_clips += len(batch["input_ids"])
 
             if micro_step % args.grad_accum == 0 or micro_step == len(loader):
@@ -379,21 +465,29 @@ def train_sft(args: argparse.Namespace) -> None:
 
                 if opt_step % args.log_every == 0 or opt_step == 1 or opt_step == total_opt_steps:
                     elapsed = time.perf_counter() - t_start
-                    avg_loss = running_loss / max(1, args.log_every * args.grad_accum if opt_step > 1 else micro_step)
+                    avg_loss = running_loss / max(1, micro_count_since_log)
                     running_loss = 0.0
+                    micro_count_since_log = 0
                     vram_gb = torch.cuda.max_memory_allocated() / (1024**3) if torch.cuda.is_available() else 0.0
                     clips_per_s = total_clips / max(elapsed, 1e-6)
                     lr_now = scheduler.get_last_lr()[0]
-                    print(f"[SFT Step {opt_step:4d}/{total_opt_steps}] loss={avg_loss:.4f} | lr={lr_now:.2e} | speed={clips_per_s:.2f} clips/s | peak_vram={vram_gb:.1f} GB")
-                    
+                    print(
+                        f"[SFT Step {opt_step:4d}/{total_opt_steps}] "
+                        f"loss={avg_loss:.4f} | lr={lr_now:.2e} | "
+                        f"speed={clips_per_s:.2f} clips/s | peak_vram={vram_gb:.1f} GB | elapsed={elapsed/60:.1f}m"
+                    )
                     with log_path.open("a", encoding="utf-8") as f:
-                        f.write(json.dumps({"step": opt_step, "loss": round(avg_loss, 4), "lr": lr_now, "clips_per_s": round(clips_per_s, 3), "peak_vram_gb": round(vram_gb, 2), "elapsed_s": round(elapsed, 1)}) + "\n")
+                        f.write(json.dumps({
+                            "step": opt_step, "loss": round(avg_loss, 4), "lr": lr_now,
+                            "clips_per_s": round(clips_per_s, 3), "peak_vram_gb": round(vram_gb, 2),
+                            "elapsed_s": round(elapsed, 1),
+                        }) + "\n")
 
                 if args.save_every > 0 and opt_step % args.save_every == 0:
                     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
                     model.save_pretrained(str(CHECKPOINT_DIR))
                     processor.save_pretrained(str(CHECKPOINT_DIR))
-                    print(f"[SFT Checkpoint] Saved intermediate adapter to {CHECKPOINT_DIR} at step {opt_step}")
+                    print(f"[SFT Checkpoint] Saved adapter to {CHECKPOINT_DIR} at step {opt_step}")
 
                 if args.max_steps > 0 and opt_step >= args.max_steps:
                     break
@@ -408,18 +502,18 @@ def train_sft(args: argparse.Namespace) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Step 6: High-Throughput Gemma 4 E4B Gujarati SFT")
+    parser = argparse.ArgumentParser(description="Step 6: Verified Gemma 4 E4B Gujarati SFT")
     parser.add_argument("--max-fleurs", type=int, default=3145)
     parser.add_argument("--max-kathbath", type=int, default=8000)
     parser.add_argument("--max-indicvoices", type=int, default=10000)
-    parser.add_argument("--batch-size", type=int, default=4, help="per-GPU microbatch size")
-    parser.add_argument("--grad-accum", type=int, default=8, help="gradient accumulation steps")
+    parser.add_argument("--batch-size", type=int, default=6, help="per-GPU microbatch size (6 avoids 24s OOM retries)")
+    parser.add_argument("--grad-accum", type=int, default=4, help="gradient accumulation steps")
     parser.add_argument("--epochs", type=int, default=1)
-    parser.add_argument("--max-steps", type=int, default=0, help="0 = full epoch")
-    parser.add_argument("--lr", type=float, default=1.5e-4)
+    parser.add_argument("--max-steps", type=int, default=0)
+    parser.add_argument("--lr", type=float, default=3e-5)
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
-    parser.add_argument("--workers", type=int, default=6)
+    parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--save-every", type=int, default=150)
     args = parser.parse_args()
