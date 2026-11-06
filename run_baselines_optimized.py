@@ -59,12 +59,13 @@ DATASET_SPLITS = {
     "kathbath": "valid",
 }
 
-MODEL_KEYS = ["whisper", "whisper-gu", "indicconformer", "sravaani", "bodhan", "gemma4"]
+MODEL_KEYS = ["whisper", "whisper-gu", "indicconformer", "sravaani", "bodhan", "gemma4", "gemma4-step5"]
 DEFAULT_MODEL_KEYS = ["bodhan", "sravaani", "gemma4", "whisper-gu", "whisper"]
 MODEL_NAME_BY_KEY = {
     "whisper": "whisper-small",
     "whisper-gu": "whisper-gujarati-small",
     "gemma4": "gemma-4-E4B-it",
+    "gemma4-step5": "gemma-4-E4B-step5",
     "indicconformer": "indicconformer-600m",
     "sravaani": "sravaani-1.0",
     "bodhan": "indic-transcribe-core",
@@ -771,6 +772,9 @@ def build_adapter(key: str) -> BaseASRAdapter:
         )
     if key == "gemma4":
         return Gemma4Adapter()
+    if key == "gemma4-step5":
+        from step5_gemma_zero import Gemma4Step5Adapter
+        return Gemma4Step5Adapter()
     if key == "indicconformer":
         return IndicConformerAdapter()
     if key == "sravaani":
