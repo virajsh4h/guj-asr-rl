@@ -151,7 +151,7 @@ def load_batch_list(dataset: str, sort_by: str, page_size: int, start_offset: in
          AND g.sample_id = b.sample_id
          AND b.model_name = 'indic-transcribe-core'
         WHERE g.dataset = ?
-          AND g.model_name = 'gemma-4-E4B-it'
+          AND g.model_name = 'gemma-4-E4B-sft'
         ORDER BY {order_sql}
         LIMIT ? OFFSET ?
         """,
@@ -228,7 +228,7 @@ def inspect_locked_sample(sample_id: str, view_mode: str):
                cer, wer, capped_cer, script_drift, loop_flag, rtf
         FROM predictions
         WHERE sample_id = ?
-          AND model_name IN ('gemma-4-E4B-it', 'indic-transcribe-core')
+          AND model_name IN ('gemma-4-E4B-sft', 'indic-transcribe-core')
         """,
         (sample_id,),
     ).fetchall()
@@ -254,7 +254,7 @@ def inspect_locked_sample(sample_id: str, view_mode: str):
 
     # build view for selected model (or both stacked) without changing sample_id
     if view_mode == "Both Models Stacked":
-        models_to_show = ["gemma-4-E4B-it", "indic-transcribe-core"]
+        models_to_show = ["gemma-4-E4B-sft", "indic-transcribe-core"]
     else:
         models_to_show = [view_mode]
 
@@ -361,7 +361,7 @@ def build_ui():
                 scale=1,
             )
             view_mode_radio = gr.Radio(
-                choices=["gemma-4-E4B-it", "indic-transcribe-core", "Both Models Stacked"],
+                choices=["gemma-4-E4B-sft", "indic-transcribe-core", "Both Models Stacked"],
                 value="Both Models Stacked",
                 label="Step 2: Switch Model View on Locked Sample (Does NOT reset sample or table)",
                 scale=2,
@@ -415,5 +415,6 @@ def build_ui():
 
 
 if __name__ == "__main__":
+    print("Launching sft version!")
     ui = build_ui()
     ui.launch(server_name="0.0.0.0", server_port=7860, share=True)
