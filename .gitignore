@@ -1,14 +1,35 @@
-data_cache/
-tmp_audio/
-__pycache__/
-*.pyc
-.env
+# Virtual env & Python cache
 venv/
-model_cache/
-results/
+__pycache__/
+*.py[cod]
 
-# Caches and binary databases
+# Heavy model & dataset caches
+data_cache/
+model_cache/
+checkpoints/
+tmp_audio/
+results/ui_audio_cache/
+
+# Databases, weights, and raw audio
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.nemo
+*.wav
+*.flac
+*.mp3
+*.parquet
+
+# Large logs & per-utterance JSONL dumps
 *.log
+results/*.jsonl
+results/error_analysis/
+.env
+
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/

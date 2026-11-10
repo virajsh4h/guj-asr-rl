@@ -1,6 +1,6 @@
 # Gujarati ASR benchmark report (optimized runner)
 
-Generated: 2026-11-06T18:12:38.519780+00:00
+Generated: 2026-11-09T14:47:03.827543+00:00
 Database: `/data/gujarati-asr-sota/results/predictions_optimized.sqlite`
 
 ## Evaluation protocol
@@ -14,6 +14,7 @@ Database: `/data/gujarati-asr-sota/results/predictions_optimized.sqlite`
 
 | Dataset | Model | N | Coverage | Corpus WER | Corpus CER | Mean capped CER | Median RTF |
 |---|---|---|---|---|---|---|---|
+| fleurs | gemma-4-E4B-grpo | 1000 | 100.0% | 19.08% | 5.59% | 5.67% | 0.0147 |
 | fleurs | gemma-4-E4B-it | 1000 | 100.0% | 24.68% | 7.77% | 7.94% | 0.0437 |
 | fleurs | gemma-4-E4B-sft | 1000 | 100.0% | 19.22% | 5.63% | 5.72% | 0.0147 |
 | fleurs | gemma-4-E4B-step5 | 1000 | 100.0% | 24.14% | 7.35% | 7.58% | 0.0254 |
@@ -21,6 +22,7 @@ Database: `/data/gujarati-asr-sota/results/predictions_optimized.sqlite`
 | fleurs | sravaani-1.0 | 1000 | 100.0% | 17.36% | 5.37% | 5.64% | 0.0062 |
 | fleurs | whisper-gujarati-small | 1000 | 100.0% | 27.75% | 10.92% | 9.11% | 0.0110 |
 | fleurs | whisper-small | 1000 | 100.0% | 258.29% | 102.43% | 86.91% | 0.0126 |
+| indicvoices | gemma-4-E4B-grpo | 2968 | 100.0% | 23.55% | 9.10% | 14.64% | 0.0189 |
 | indicvoices | gemma-4-E4B-it | 2968 | 100.0% | 35.91% | 16.59% | 24.76% | 0.0512 |
 | indicvoices | gemma-4-E4B-sft | 2968 | 100.0% | 23.93% | 9.27% | 15.28% | 0.0191 |
 | indicvoices | gemma-4-E4B-step5 | 2968 | 100.0% | 35.25% | 15.90% | 24.16% | 0.0310 |
@@ -28,6 +30,7 @@ Database: `/data/gujarati-asr-sota/results/predictions_optimized.sqlite`
 | indicvoices | sravaani-1.0 | 2968 | 100.0% | 20.95% | 7.31% | 21.86% | 0.0068 |
 | indicvoices | whisper-gujarati-small | 2968 | 100.0% | 50.09% | 36.23% | 39.41% | 0.0120 |
 | indicvoices | whisper-small | 2968 | 100.0% | 313.38% | 149.52% | 89.34% | 0.0193 |
+| kathbath | gemma-4-E4B-grpo | 2905 | 100.0% | 17.30% | 4.38% | 4.33% | 0.0146 |
 | kathbath | gemma-4-E4B-it | 2905 | 100.0% | 25.81% | 7.77% | 7.46% | 0.0455 |
 | kathbath | gemma-4-E4B-sft | 2905 | 100.0% | 17.52% | 4.41% | 4.37% | 0.0146 |
 | kathbath | gemma-4-E4B-step5 | 2905 | 100.0% | 24.35% | 6.79% | 6.79% | 0.0254 |
@@ -40,6 +43,7 @@ Database: `/data/gujarati-asr-sota/results/predictions_optimized.sqlite`
 
 | Model | Total N | Macro WER | Macro CER | Pooled WER | Pooled CER |
 |---|---|---|---|---|---|
+| gemma-4-E4B-grpo | 6873 | 19.97% | 6.35% | 20.54% | 6.64% |
 | gemma-4-E4B-it | 6873 | 28.80% | 10.71% | 30.21% | 11.49% |
 | gemma-4-E4B-sft | 6873 | 20.22% | 6.44% | 20.82% | 6.74% |
 | gemma-4-E4B-step5 | 6873 | 27.92% | 10.01% | 29.31% | 10.76% |
@@ -91,3 +95,16 @@ Database: `/data/gujarati-asr-sota/results/predictions_optimized.sqlite`
 | gemma-4-E4B-sft | fleurs | 1000 | 5.981 | 62.766 | 32 | multimodal_sft_merged_batch | 8 | 19.04 |
 | gemma-4-E4B-sft | indicvoices | 2968 | 8.466 | 55.466 | 32 | multimodal_sft_merged_batch | 8 | 19.19 |
 | gemma-4-E4B-sft | kathbath | 2905 | 11.966 | 68.335 | 32 | multimodal_sft_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | indicvoices | 100 | 5.754 | 39.277 | 32 | multimodal_grpo_merged_batch | 8 | 17.51 |
+| gemma-4-E4B-grpo | fleurs | 1000 | 5.974 | 62.686 | 32 | multimodal_grpo_merged_batch | 8 | 19.04 |
+| gemma-4-E4B-grpo | indicvoices | 2968 | 8.451 | 55.364 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | kathbath | 2905 | 11.933 | 68.146 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | fleurs | 1000 | 6.036 | 63.340 | 32 | multimodal_grpo_merged_batch | 8 | 19.04 |
+| gemma-4-E4B-grpo | indicvoices | 2968 | 8.498 | 55.674 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | kathbath | 2905 | 12.014 | 68.609 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | fleurs | 1000 | 5.849 | 61.379 | 32 | multimodal_grpo_merged_batch | 8 | 19.04 |
+| gemma-4-E4B-grpo | indicvoices | 2968 | 8.207 | 53.767 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | kathbath | 2905 | 11.614 | 66.323 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | fleurs | 1000 | 5.943 | 62.363 | 32 | multimodal_grpo_merged_batch | 8 | 19.04 |
+| gemma-4-E4B-grpo | indicvoices | 2968 | 8.363 | 54.790 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
+| gemma-4-E4B-grpo | kathbath | 2905 | 11.887 | 67.885 | 32 | multimodal_grpo_merged_batch | 8 | 19.19 |
