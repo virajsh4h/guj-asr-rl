@@ -1,11 +1,3 @@
-"""What gets evaluated, and what is being evaluated.
-
-Revisions are pinned so a row can be traced to exact bytes of audio and text. The
-loader still comes from `run_baselines_optimized.load_gujarati_dataset`; if the two
-disagree the manifest is what the report records, and a mismatch shows up as a
-missing dataset rather than a silent substitution.
-"""
-
 from __future__ import annotations
 
 DATASETS = {

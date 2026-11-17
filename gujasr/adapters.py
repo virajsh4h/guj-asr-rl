@@ -1,11 +1,3 @@
-"""Model adapters.
-
-Model code is not touched. `build_adapter` from `run_baselines_optimized` stays the single
-constructor for every checkpoint, so a harness run and an original-bench run load identical
-weights with identical decoding settings. This module only adds a seam that tests can
-replace without importing torch.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -36,7 +28,6 @@ def build(model_key: str) -> Adapter:
 
 
 class ScriptedAdapter(Adapter):
-    """Deterministic stand-in used by the test suite."""
 
     def __init__(self, name: str = "scripted", fail_on: set[int] | None = None, echo: str = "ok"):
         self.name = name

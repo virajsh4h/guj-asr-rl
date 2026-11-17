@@ -1,10 +1,3 @@
-"""Text normalisation and utterance metrics.
-
-The normaliser itself lives in `gu_normalizer.py` and is reused verbatim. Rewriting
-it would silently invalidate every number already reported, so this module only
-wraps it and pins the version that produced a row.
-"""
-
 from __future__ import annotations
 
 from typing import Any

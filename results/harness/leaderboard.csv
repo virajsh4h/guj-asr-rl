@@ -1,0 +1,8 @@
+model_key,model_name,dataset,n,expected,coverage,wer,cer,cer_lo,cer_hi,capped_cer,drift_pct,loop_pct,rtf,utt_per_s
+gemma4,gemma-4-E4B-it,fleurs,669,1000,0.669,24.4547,7.7493,7.0287,8.6255,7.844,3.886,0.149,0.24542,0.386
+sravaani,sravaani-1.0,fleurs,321,1000,0.321,17.8262,5.5006,4.7857,6.2631,5.8201,0.0,0.0,0.00723,13.381
+sravaani,sravaani-1.0,indicvoices,2958,2968,0.9966,20.8541,7.2693,6.9467,7.6109,21.7669,17.14,1.014,0.00807,18.907
+sravaani,sravaani-1.0,kathbath,2895,2905,0.9966,12.7277,2.669,2.5538,2.799,2.6594,0.069,0.0,0.00816,21.456
+whisper,whisper-small,fleurs,10,1000,0.01,195.6522,86.5659,82.9405,91.5451,85.623,90.0,10.0,0.13578,0.686
+whisper,whisper-small,indicvoices,10,2968,0.0034,200.0,118.1556,91.1892,207.997,96.286,80.0,40.0,0.20158,0.796
+whisper,whisper-small,kathbath,10,2905,0.0034,212.381,84.3271,82.8846,85.7377,84.212,100.0,0.0,0.13213,1.342

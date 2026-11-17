@@ -1,11 +1,3 @@
-"""Evaluation loop.
-
-Same decode path as the original bench, with three differences that change what the
-numbers mean rather than what the model does: rows are bound to a run identity, every
-inference is timed at batch level and amortised per utterance, and failures are recorded
-instead of dropped.
-"""
-
 from __future__ import annotations
 
 import json

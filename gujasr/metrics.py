@@ -1,15 +1,3 @@
-"""Corpus error rates with uncertainty.
-
-A single corpus CER is a point estimate over one sample of utterances. The same model
-run on a different sample of Gujarati speech moves by a few tenths of a point, which is
-the same size as the gaps between most systems on this leaderboard. So every headline
-number here carries a bootstrap interval, and every "model A beats model B" claim comes
-from a paired bootstrap on identical utterances.
-
-Edit counts are computed once per utterance and resampled. Recomputing CER inside the
-loop would be 6.9 million string alignments per model; this is exact and takes seconds.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -108,7 +96,6 @@ def paired_bootstrap(
     alpha: float = DEFAULT_ALPHA,
     seed: int = 0,
 ) -> PairedResult:
-    """Delta = left - right, resampling utterances that both systems saw."""
     if left.n != right.n:
         raise ValueError(f"paired test needs equal n: {left.n} vs {right.n}")
     if left.n == 0:

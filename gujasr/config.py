@@ -1,5 +1,3 @@
-"""Run configuration and the identity that makes a run reproducible."""
-
 from __future__ import annotations
 
 import hashlib

@@ -1,11 +1,3 @@
-"""SQLite store keyed by run identity.
-
-The old bench resumed by sample id alone, so a row produced under one normaliser or one
-decoding config was silently reusable by another. Here a row belongs to a `run_key` that
-hashes the model, dataset, scoring config, code revision and normaliser version. Resume
-can only ever see its own run.
-"""
-
 from __future__ import annotations
 
 import json

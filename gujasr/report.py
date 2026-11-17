@@ -1,10 +1,3 @@
-"""Leaderboard construction and rendering.
-
-Every published number is a corpus rate over whole utterances with a bootstrap interval
-attached. A model only appears in the macro table when it covers every dataset in full;
-partial runs are shown but never ranked.
-"""
-
 from __future__ import annotations
 
 import csv
@@ -277,7 +270,6 @@ def markdown(board: dict[str, Any], title: str = "Gujarati ASR leaderboard") -> 
         rows = [[m["model_name"], f"{m['n']}", f"{m['coverage'] * 100:.1f}%"] for m in partial]
         lines.append(_table(["Model", "N", "Coverage"], rows))
     return "\n".join(lines) + "\n"
-
 
 HTML_CSS = """
 body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#16181d;max-width:980px;margin:48px auto;padding:0 20px}

@@ -1,0 +1,26 @@
+<!doctype html><meta charset='utf-8'>
+<title>Gujarati ASR leaderboard</title>
+<style>
+body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#16181d;max-width:980px;margin:48px auto;padding:0 20px}
+h1{font-size:30px;letter-spacing:-.02em;margin-bottom:4px}
+h2{font-size:19px;margin-top:38px;padding-bottom:6px;border-bottom:1px solid #e6e8ec}
+.sub{color:#6b7280;margin:0 0 28px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{text-align:left;font-weight:600;color:#4b5563;border-bottom:1px solid #d1d5db;padding:8px 10px}
+td{padding:7px 10px;border-bottom:1px solid #f0f1f3;font-variant-numeric:tabular-nums}
+tr:hover td{background:#fafbfc}
+.num{text-align:right}
+code{background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+<h1>Gujarati ASR leaderboard</h1>
+<p class='sub'>Corpus CER over fleurs, indicvoices, kathbath. 95% bootstrap interval over utterances, 2000 resamples.</p>
+<h2>Three-dataset macro</h2><table><tr><th>#</th><th>Model</th><th class='num'>Macro CER</th><th class='num'>95% CI</th><th class='num'>Macro WER</th></tr>
+</table><h2>Per dataset</h2><table><tr><th>Model</th><th>Dataset</th><th class='num'>N</th><th class='num'>CER</th><th class='num'>95% CI</th><th class='num'>WER</th><th class='num'>Loop %</th><th class='num'>RTF</th></tr>
+<tr><td>gemma-4-E4B-it</td><td>fleurs</td><td class='num'>669</td><td class='num'>7.75</td><td class='num'>7.03–8.63</td><td class='num'>24.45</td><td class='num'>0.1</td><td class='num'>0.2454</td></tr>
+<tr><td>sravaani-1.0</td><td>fleurs</td><td class='num'>321</td><td class='num'>5.50</td><td class='num'>4.79–6.26</td><td class='num'>17.83</td><td class='num'>0.0</td><td class='num'>0.0072</td></tr>
+<tr><td>sravaani-1.0</td><td>indicvoices</td><td class='num'>2958</td><td class='num'>7.27</td><td class='num'>6.95–7.61</td><td class='num'>20.85</td><td class='num'>1.0</td><td class='num'>0.0081</td></tr>
+<tr><td>sravaani-1.0</td><td>kathbath</td><td class='num'>2895</td><td class='num'>2.67</td><td class='num'>2.55–2.80</td><td class='num'>12.73</td><td class='num'>0.0</td><td class='num'>0.0082</td></tr>
+<tr><td>whisper-small</td><td>fleurs</td><td class='num'>10</td><td class='num'>86.57</td><td class='num'>82.94–91.55</td><td class='num'>195.65</td><td class='num'>10.0</td><td class='num'>0.1358</td></tr>
+<tr><td>whisper-small</td><td>indicvoices</td><td class='num'>10</td><td class='num'>118.16</td><td class='num'>91.19–208.00</td><td class='num'>200.00</td><td class='num'>40.0</td><td class='num'>0.2016</td></tr>
+<tr><td>whisper-small</td><td>kathbath</td><td class='num'>10</td><td class='num'>84.33</td><td class='num'>82.88–85.74</td><td class='num'>212.38</td><td class='num'>0.0</td><td class='num'>0.1321</td></tr>
+</table>

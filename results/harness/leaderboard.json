@@ -1,0 +1,187 @@
+{
+  "generated_from": {
+    "runs": [
+      "gemma4",
+      "sravaani",
+      "whisper"
+    ],
+    "datasets": [
+      "fleurs",
+      "indicvoices",
+      "kathbath"
+    ],
+    "bootstrap_reps": 2000,
+    "seed": 0
+  },
+  "cells": [
+    {
+      "model_key": "gemma4",
+      "model_name": "gemma-4-E4B-it",
+      "dataset": "fleurs",
+      "n": 669,
+      "expected": 1000,
+      "coverage": 0.669,
+      "wer": 24.4547,
+      "cer": 7.7493,
+      "cer_lo": 7.0287,
+      "cer_hi": 8.6255,
+      "capped_cer": 7.844,
+      "drift_pct": 3.886,
+      "loop_pct": 0.149,
+      "rtf": 0.24542,
+      "utt_per_s": 0.386
+    },
+    {
+      "model_key": "sravaani",
+      "model_name": "sravaani-1.0",
+      "dataset": "fleurs",
+      "n": 321,
+      "expected": 1000,
+      "coverage": 0.321,
+      "wer": 17.8262,
+      "cer": 5.5006,
+      "cer_lo": 4.7857,
+      "cer_hi": 6.2631,
+      "capped_cer": 5.8201,
+      "drift_pct": 0.0,
+      "loop_pct": 0.0,
+      "rtf": 0.00723,
+      "utt_per_s": 13.381
+    },
+    {
+      "model_key": "sravaani",
+      "model_name": "sravaani-1.0",
+      "dataset": "indicvoices",
+      "n": 2958,
+      "expected": 2968,
+      "coverage": 0.9966,
+      "wer": 20.8541,
+      "cer": 7.2693,
+      "cer_lo": 6.9467,
+      "cer_hi": 7.6109,
+      "capped_cer": 21.7669,
+      "drift_pct": 17.14,
+      "loop_pct": 1.014,
+      "rtf": 0.00807,
+      "utt_per_s": 18.907
+    },
+    {
+      "model_key": "sravaani",
+      "model_name": "sravaani-1.0",
+      "dataset": "kathbath",
+      "n": 2895,
+      "expected": 2905,
+      "coverage": 0.9966,
+      "wer": 12.7277,
+      "cer": 2.669,
+      "cer_lo": 2.5538,
+      "cer_hi": 2.799,
+      "capped_cer": 2.6594,
+      "drift_pct": 0.069,
+      "loop_pct": 0.0,
+      "rtf": 0.00816,
+      "utt_per_s": 21.456
+    },
+    {
+      "model_key": "whisper",
+      "model_name": "whisper-small",
+      "dataset": "fleurs",
+      "n": 10,
+      "expected": 1000,
+      "coverage": 0.01,
+      "wer": 195.6522,
+      "cer": 86.5659,
+      "cer_lo": 82.9405,
+      "cer_hi": 91.5451,
+      "capped_cer": 85.623,
+      "drift_pct": 90.0,
+      "loop_pct": 10.0,
+      "rtf": 0.13578,
+      "utt_per_s": 0.686
+    },
+    {
+      "model_key": "whisper",
+      "model_name": "whisper-small",
+      "dataset": "indicvoices",
+      "n": 10,
+      "expected": 2968,
+      "coverage": 0.0034,
+      "wer": 200.0,
+      "cer": 118.1556,
+      "cer_lo": 91.1892,
+      "cer_hi": 207.997,
+      "capped_cer": 96.286,
+      "drift_pct": 80.0,
+      "loop_pct": 40.0,
+      "rtf": 0.20158,
+      "utt_per_s": 0.796
+    },
+    {
+      "model_key": "whisper",
+      "model_name": "whisper-small",
+      "dataset": "kathbath",
+      "n": 10,
+      "expected": 2905,
+      "coverage": 0.0034,
+      "wer": 212.381,
+      "cer": 84.3271,
+      "cer_lo": 82.8846,
+      "cer_hi": 85.7377,
+      "capped_cer": 84.212,
+      "drift_pct": 100.0,
+      "loop_pct": 0.0,
+      "rtf": 0.13213,
+      "utt_per_s": 1.342
+    }
+  ],
+  "macro": [
+    {
+      "model_key": "sravaani",
+      "model_name": "sravaani-1.0",
+      "n": 6174,
+      "coverage": 0.7714,
+      "wer": 17.136,
+      "cer": 5.1463,
+      "cer_lo": 5.027,
+      "cer_hi": 5.3884,
+      "per_dataset": {
+        "fleurs": 5.5006,
+        "indicvoices": 7.2693,
+        "kathbath": 2.669
+      },
+      "complete": false
+    },
+    {
+      "model_key": "gemma4",
+      "model_name": "gemma-4-E4B-it",
+      "n": 669,
+      "coverage": 0.669,
+      "wer": 24.4547,
+      "cer": 7.7493,
+      "cer_lo": 7.0287,
+      "cer_hi": 8.6255,
+      "per_dataset": {
+        "fleurs": 7.7493
+      },
+      "complete": false
+    },
+    {
+      "model_key": "whisper",
+      "model_name": "whisper-small",
+      "n": 30,
+      "coverage": 0.0056,
+      "wer": 202.6777,
+      "cer": 96.3495,
+      "cer_lo": 85.8093,
+      "cer_hi": 110.8427,
+      "per_dataset": {
+        "fleurs": 86.5659,
+        "indicvoices": 118.1556,
+        "kathbath": 84.3271
+      },
+      "complete": false
+    }
+  ],
+  "comparisons": [],
+  "reference": null
+}

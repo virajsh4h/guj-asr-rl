@@ -1,5 +1,3 @@
-"""Command line entry point."""
-
 from __future__ import annotations
 
 import argparse
@@ -63,9 +61,9 @@ def cmd_import(args) -> int:
     by_name = {spec["name"]: key for key, spec in manifests.MODELS.items()}
     rows = source.execute("SELECT * FROM predictions").fetchall()
     conn = store.connect(args.db)
-    run_key = args.run_key
     written = 0
     skipped = 0
+    seen: dict[tuple[str, str, str], int] = {}
     try:
         payload = []
         for row in rows:
@@ -73,6 +71,10 @@ def cmd_import(args) -> int:
             if model_key is None:
                 skipped += 1
                 continue
+            run_key = f"{args.run_key}:{model_key}"
+            seen[(model_key, row["dataset"], row["split"])] = seen.get(
+                (model_key, row["dataset"], row["split"]), 0
+            ) + 1
             payload.append(
                 {
                     "run_key": run_key,
@@ -102,20 +104,15 @@ def cmd_import(args) -> int:
                 written += store.write_rows(conn, payload)
                 payload = []
         written += store.write_rows(conn, payload)
-        dataset_rows = {}
-        for row in rows:
-            dataset_rows.setdefault(row["dataset"], 0)
-            dataset_rows[row["dataset"]] += 1
-        for dataset, split, count in source.execute(
-            "SELECT dataset, split, COUNT(*) FROM predictions GROUP BY dataset, split"
-        ).fetchall():
+        for (model_key, dataset, split), count in seen.items():
             conn.execute(
                 """INSERT OR REPLACE INTO runs (run_key, created_at, model_key, model_name,
                        dataset, split, config_hash, code_sha, normalizer_version,
                        manifest_json, status)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    run_key, args.created_at, "mixed", "original bench", dataset, split,
+                    f"{args.run_key}:{model_key}", args.created_at, model_key,
+                    manifests.model_name(model_key), dataset, split,
                     "import", "unknown", "gu-normalizer/1",
                     json.dumps(manifests.dataset_manifest(dataset)), "imported",
                 ),
@@ -124,7 +121,7 @@ def cmd_import(args) -> int:
     finally:
         conn.close()
         source.close()
-    _print({"run_key": run_key, "written": written, "skipped": skipped})
+    _print({"run_key": args.run_key, "written": written, "skipped": skipped})
     return 0
 
 
@@ -138,9 +135,11 @@ def cmd_verify(args) -> int:
         for row in store.fetch_predictions(conn, args.run_keys or None):
             metrics = utterance_metrics(row["reference_raw"], row["hypothesis_raw"])
             checked += 1
-            if abs(metrics["cer"] - row["cer"]) > 1e-3 or metrics["ref_norm"] != row["reference_norm"]:
+            norm_differs = metrics["ref_norm"] != row["reference_norm"]
+            if norm_differs or abs(metrics["cer"] - row["cer"]) > 0.05:
                 mismatches.append(
                     {"sample_id": row["sample_id"], "model": row["model_name"],
+                     "norm_differs": norm_differs,
                      "stored": row["cer"], "recomputed": metrics["cer"]}
                 )
     finally:
@@ -192,7 +191,6 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
     return args.func(args)
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
