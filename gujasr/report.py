@@ -41,6 +41,7 @@ class Macro:
     model_key: str
     model_name: str
     n: int
+    expected: int
     coverage: float
     wer: float
     cer: float
@@ -139,6 +140,9 @@ def build(
                 model_key=model_key,
                 model_name=grouped[(model_key, available)][0]["model_name"],
                 n=sum(per[d].n for d in datasets if d in per),
+                expected=sum(
+                    manifests.DATASETS[d]["expected_rows"] for d in datasets if d in per
+                ),
                 coverage=round(float(np.mean([per[d].coverage for d in datasets if d in per])), 4),
                 wer=round(metrics.macro([per[d].wer for d in datasets if d in per]), 4),
                 cer=round(macro_cer, 4),
@@ -232,7 +236,7 @@ def markdown(board: dict[str, Any], title: str = "Gujarati ASR leaderboard") -> 
             _pct(macro["cer"]),
             f"{_pct(macro['cer_lo'])}–{_pct(macro['cer_hi'])}",
             _pct(macro["wer"]),
-            f"{macro['n']}/{macro['n']}",
+            f"{macro['n']}/{macro['expected']}",
         ])
     lines.append(_table(["#", "Model", "Macro CER", "95% CI", "Macro WER", "N"], rows))
     lines.append("")
