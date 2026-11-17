@@ -1,0 +1,14 @@
+{
+  "models": ["bodhan", "sravaani", "whisper-gu", "whisper"],
+  "datasets": ["fleurs", "indicvoices", "kathbath"],
+  "db_path": "results/harness.sqlite",
+  "results_dir": "results/harness",
+  "batch_size": 32,
+  "decode_workers": 8,
+  "prefetch": 32,
+  "bucket_multiplier": 4,
+  "max_samples": 0,
+  "torch_threads": 4,
+  "seed": 0,
+  "bootstrap_reps": 2000
+}

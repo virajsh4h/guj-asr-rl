@@ -33,3 +33,6 @@ results/error_analysis/
 
 .ipynb_checkpoints/
 */.ipynb_checkpoints/
+
+.venv/
+.pytest_cache/
