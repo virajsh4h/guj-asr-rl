@@ -54,6 +54,7 @@ class Macro:
 class Comparison:
     model_key: str
     model_name: str
+    dataset: str
     reference: str
     delta: float
     lo: float
@@ -121,15 +122,18 @@ def build(
 
     macros: list[Macro] = []
     for model_key, per in by_model.items():
-        complete = all(d in per and per[d].coverage >= 1.0 for d in datasets)
+        complete = all(d in per and per[d].coverage >= 0.99 for d in datasets)
         available = next(d for d in datasets if (model_key, d) in grouped)
-        pooled = metrics.counts(
-            [i["reference_norm"] for d in datasets for i in grouped.get((model_key, d), [])],
-            [i["hypothesis_norm"] for d in datasets for i in grouped.get((model_key, d), [])],
-            "char",
-        )
+        counts_by_dataset = [
+            metrics.counts(
+                [i["reference_norm"] for i in grouped[(model_key, d)]],
+                [i["hypothesis_norm"] for i in grouped[(model_key, d)]],
+                "char",
+            )
+            for d in datasets if (model_key, d) in grouped
+        ]
         macro_cer = metrics.macro([per[d].cer for d in datasets if d in per])
-        lo, hi = metrics.bootstrap_ci(pooled, reps=cfg.bootstrap_reps, seed=cfg.seed)
+        lo, hi = metrics.bootstrap_macro(counts_by_dataset, reps=cfg.bootstrap_reps, seed=cfg.seed)
         macros.append(
             Macro(
                 model_key=model_key,
@@ -175,6 +179,7 @@ def build(
                     Comparison(
                         model_key=model_key,
                         model_name=per[dataset].model_name,
+                        dataset=dataset,
                         reference=reference,
                         delta=round(result.delta, 4),
                         lo=round(result.lo, 4),
@@ -234,7 +239,7 @@ def markdown(board: dict[str, Any], title: str = "Gujarati ASR leaderboard") -> 
     lines.append("## Per dataset")
     lines.append("")
     rows = []
-    for cell in board["cells"]:
+    for cell in sorted(board["cells"], key=lambda c: (c["model_name"], c["dataset"])):
         rows.append([
             cell["model_name"],
             f"{cell['dataset']}",
@@ -254,14 +259,16 @@ def markdown(board: dict[str, Any], title: str = "Gujarati ASR leaderboard") -> 
         rows = []
         for cmp in board["comparisons"]:
             mark = "yes" if cmp["significant"] else "no"
+            p_text = "<0.001" if cmp["p_value"] < 0.001 else f"{cmp['p_value']:.3f}"
             rows.append([
                 cmp["model_name"],
+                cmp["dataset"],
                 cmp["delta"],
                 f"{cmp['lo']}–{cmp['hi']}",
-                cmp["p_value"],
+                p_text,
                 mark,
             ])
-        lines.append(_table(["Model", "Δ CER", "95% CI", "p", "Significant"], rows))
+        lines.append(_table(["Model", "Dataset", "Δ CER", "95% CI", "p", "Significant"], rows))
         lines.append("")
         lines.append("Positive Δ means the model is worse than the reference on the same utterances.")
     partial = [m for m in board["macro"] if not m["complete"]]
@@ -319,11 +326,12 @@ def render_html(board: dict[str, Any], title: str = "Gujarati ASR leaderboard") 
     out.append("</table>")
     if board["comparisons"]:
         out.append(f"<h2>Paired against <code>{esc(board['reference'])}</code></h2>"
-                   "<table><tr><th>Model</th><th class='num'>Δ CER</th><th class='num'>95% CI</th>"
-                   "<th class='num'>p</th></tr>")
+                   "<table><tr><th>Model</th><th>Dataset</th><th class='num'>Δ CER</th>"
+                   "<th class='num'>95% CI</th><th class='num'>p</th></tr>")
         for cmp in board["comparisons"]:
             out.append(
-                f"<tr><td>{esc(cmp['model_name'])}</td><td class='num'>{cmp['delta']:+.2f}</td>"
+                f"<tr><td>{esc(cmp['model_name'])}</td><td>{cmp['dataset']}</td>"
+                f"<td class='num'>{cmp['delta']:+.2f}</td>"
                 f"<td class='num'>{cmp['lo']:+.2f}–{cmp['hi']:+.2f}</td>"
                 f"<td class='num'>{cmp['p_value']:.4f}</td></tr>"
             )

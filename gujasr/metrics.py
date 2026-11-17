@@ -122,3 +122,27 @@ def paired_bootstrap(
 
 def macro(values: Sequence[float]) -> float:
     return float(np.mean(values)) if values else 0.0
+
+
+def bootstrap_macro(
+    per_dataset: Sequence[Counts],
+    reps: int = DEFAULT_REPS,
+    alpha: float = DEFAULT_ALPHA,
+    seed: int = 0,
+) -> tuple[float, float]:
+    if not per_dataset:
+        return 0.0, 0.0
+    rng = np.random.default_rng(seed)
+    rates = []
+    for data in per_dataset:
+        if data.n == 0:
+            continue
+        idx = rng.integers(0, data.n, size=(reps, data.n))
+        edits = data.edits[idx].sum(axis=1)
+        lengths = np.maximum(data.lengths[idx].sum(axis=1), 1)
+        rates.append(100.0 * edits / lengths)
+    if not rates:
+        return 0.0, 0.0
+    stacked = np.mean(np.vstack(rates), axis=0)
+    lo, hi = np.quantile(stacked, [alpha / 2, 1 - alpha / 2])
+    return float(lo), float(hi)
